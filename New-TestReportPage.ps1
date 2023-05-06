@@ -37,7 +37,10 @@ param(
     $Repo,
     [Parameter(Mandatory)]
     [string]
-    $TestBranch
+    $TestBranch,
+    [Parameter]
+    [string]
+    $TargetBranch = "dev"
 )
 #region Functions
 function Get-OSAHeaders {
@@ -50,6 +53,48 @@ function Get-OSAHeaders {
         Authorization = $basicAuthValue
     }    
 }
+function Get-CurrentSprint {
+    $boardId = 998
+    $start = 0
+    $sprints = @()
+    do {
+        $url = "https://services.csa.spawar.navy.mil/jira/rest/agile/1.0/board/$boardId/sprint/?startAt=$start"
+        $params = @{
+            Uri = $url
+            Headers = $Headers
+        }
+        $res = try { Invoke-WebRequest @params | ConvertFrom-Json } catch { $false }
+        $sprints += $res.values
+        $start += $res.maxResults
+    } until ($res.isLast -or !$res)
+    return ($sprints | Where-Object { $_.state -eq "active" -and $_.name -like "AIR*" })[0].name
+}
+function FakeAdd-LinkToPullRequest {
+    param(
+        [Parameter()]
+        [PSCustomObject]
+        $PullRequest
+    )
+    if ($null -eq $Headers) { $Headers = Get-OSAHeaders }
+    $TestBranchHeader = "## Test Branches:`n`n"
+    $confluenceMarkDown = "[$conflueneUrl]($TestBranch)"
+    $description = $PullRequest.description
+    if ($description -notmatch $TestBranchHeader) {
+        $newDescription = "$description`n`n$TestBranchHeader`n`n$confluenceMarkdown`n`n_____"
+    }
+    else {
+        $offset = $TestBranchHeader.ToCharArray().Count
+        $splicePoint = $description.IndexOf($TestBranchHeader) + $offset
+        $newDescBegin = $description.substring(0, $splicePoint)
+        $newDescEnd = $description.substring($splicePoint)
+        $newDescription = "$newDescBegin$confluenceMarkdown`n$newDescEnd"
+    }
+    $PullRequest.version++
+    $PullRequest.description = $newDescription
+    $body = @($PullRequest.version, $PullRequest.description) | ConvertTo-Json -Compress
+    Write-Host $body | ConvertFrom-Json
+    return @{StatusCode = 200 }
+}
 function Add-LinkToPullRequest {
     param(
         [Parameter()]
@@ -57,18 +102,18 @@ function Add-LinkToPullRequest {
         $PullRequest
     )
     if ($null -eq $Headers) { $Headers = Get-OSAHeaders }
-    $BookEnd = "**Test Branches:**"
+    $TestBranchHeader = "## Test Branches:`n`n"
     $confluenceMarkDown = "[$conflueneUrl]($TestBranch)"
     $description = $PullRequest.description
-    $firstTest = ($description -notcontains $BookEnd)
-    $splicePoint = $description.LastIndexOf("\n\n")
-    $newDescBegin = $description.substring(0, $splicePoint)
-    $newDescEnd = $description.substring($splicePoint + 1, $description.length - $splicePoint)
-    if ($firstTest) { 
-        $newDescription = "$newDescBegin\n\n$BookEnd $confluenceMarkdown$newDescEnd"
+    if ($description -notmatch $TestBranchHeader) {
+        $newDescription = "$description`n`n$TestBranchHeader`n`n$confluenceMarkdown`n`n_____"
     }
     else {
-        $newDescription = "$newDescBegin\n\n, $confluenceMarkdown$newDescEnd"
+        $offset = $TestBranchHeader.ToCharArray().Count
+        $splicePoint = $description.IndexOf($TestBranchHeader) + $offset
+        $newDescBegin = $description.substring(0, $splicePoint)
+        $newDescEnd = $description.substring($splicePoint)
+        $newDescription = "$newDescBegin$confluenceMarkdown`n$newDescEnd"
     }
     $PullRequest.version++
     $PullRequest.description = $newDescription
@@ -88,13 +133,80 @@ function New-ConfluenceTestPage {
         $Repo,
         $TestBranch
     )
-    switch ($Repo){
-        "canes-ob2-2"{$version = "SW5"; break }
+    switch ($Repo) {
+        "canes-ob2-2" { $version = "SW5"; break }
         "canes-ob2" { $version = "SW4"; break }
-        Default { $version = "FixMe"}
-        }
-        
+        Default { $version = "FixMe" }
     }
+    $confluenceTitle = "$version $(Get-CurrentSprint) $TestBranch"
+    $confluenceTitle
+}
+function Get-JiraTicket {
+    param(
+        [Parameter(Mandatory, ValueFromPipeline)]
+        [PSCustomObject[]]
+        $pullRequest
+    )
+    process {
+        $tmp = ($pullRequest.fromRef.displayId).Substring($pullRequest.fromRef.displayId.IndexOf("/")+1) -split "-" 
+        return $tmp[0..1] -join "-"
+    }
+}
+function Get-RecentReleaseTag {
+    $start=0
+    $tags = @()
+    do{
+        $url = "https://services.csa.spawar.navy.mil/bitbucket/rest/api/1.0/projects/CH/repos/$Repo/tags?start=$start"
+        $params = @{
+            Uri = $url
+            Headers = $Headers
+        }
+        $res = try { Invoke-WebRequest @params | ConvertFrom-Json } catch { $false }
+        $start = $res.nextPageStart
+        $tags += $res.values
+    } until ($res.isLastPage - !$res)
+    if (!($res)) { Write-Host "Unable to retrieve $Repo tags, verify password information and portal access" -ForegroundColor Magenta; return $null }
+    $start=0
+    do{
+        $url = "https://services.csa.spawar.navy.mil/bitbucket/rest/api/1.0/projects/CH/repos/$Repo/commits?at=refs%2Fheads%2F$TargetBranch&start=$start"
+        $params = @{
+            Uri = $url
+            Headers = $Headers
+        }
+        $res = Invoke-WebRequest @params | ConvertFrom-Json
+        $start = $res.nextPageStart
+        $commitIds = $res.values.id
+        foreach ($commitId in $commitIds){
+            if ($tags.latestCommit.Contains($commitId)){
+                if ($tags[$($tags.latestCommit.indexOf($commitID))].displayID -match "[A-z]R[0-9]\Z"){
+                    $displayID = $tags[$($tags.latestCommit.indexOf($commitID))].displayID
+                    return $displayID.substring($displayID.LastIndexOf("_")+1)
+                }
+            }
+        }
+    } until ($res.isLastPage)
+}
+function Get-Subsystem {
+    param (
+        [string]
+        $JiraID
+    )
+    $url = "https://services.csa.spawar.navy.mil/jira/rest/api/2/issue/$JiraID"
+    $params = @{
+        Uri = $url
+        Headers = $Headers
+    }
+    $res = try { (Invoke-WebRequest @params | ConvertFrom-Json) }
+        catch{ $false }
+    if (!($res)) {
+        Write-Host "Unable to retrieve JIRA issue, verify password information and portal access" -ForegroundColor Magenta
+        return $null
+    }
+    else {
+        return $res.fields.components.name
+    }
+}
+
 #endregion Functions
 #region Variables
 if ($null -eq $Headers) { $Headers = Get-OSAHeaders }
@@ -106,63 +218,90 @@ $1970TimeParams = @{
 [Net.ServicePointManager]::SecurityProtocol = "tls12, tls11, tls, Ssl3"
 Add-Type -AssemblyName System.Security
 #endregion Variables
-#region AllPullRequestCommits
-$allPullRequestCommits = @()
-$url = "https://services.csa.spawar.navy.mil/bitbucket/rest/api/1.0/projects/CH/repos/$Repo/pull-requests/"
-$params = @{
-    Uri     = $url
-    Headers = $Headers
-}
-$allPullRequestCommits = (Invoke-WebRequest @params | ConvertFrom-Json).values.fromRef.latestCommit
-#endregion AllPullRequestCommits
-#region TestBranchCommits
+#region AllPullRequest
+Write-Host "Retrieving pull requests from https://services.csa.spawar.navy.mil/bitbucket/rest/api/1.0/projects/CH/repos/$Repo/pull-requests/?at=refs%2Fheads%2F$TargetBranch" -ForegroundColor DarkCyan
 $start = 0
-$commitHashes = @()
+$pullRequests = @()
+do {
+    $url = "https://services.csa.spawar.navy.mil/bitbucket/rest/api/1.0/projects/CH/repos/$Repo/pull-requests/?at=refs%2Fheads%2F$TargetBranch&start=$start"
+    $params = @{
+        Uri     = $url
+        Headers = $Headers
+    }
+    $res = try { (Invoke-WebRequest @params | ConvertFrom-Json) }
+    catch { $false } 
+    $start = $res.nextPageStart
+    $pullRequests += $res.values
+} until ($res.isLastPage -or !$res)
+if (!$res) {
+    Write-Host "Unable to retrieve pull requests, verify password information and portal access" -ForegroundColor Magenta
+    exit
+}
+#endregion AllPullRequests
+#region TestBranchCommits
+Write-Host "Retrieving $TestBranch commits from https://services.csa.spawar.navy.mil/bitbucket/rest/api/1.0/projects/CH/repos/$Repo/commits/?since=$TargetBranch&until=$TestBranch" -ForegroundColor DarkCyan
+$start = 0
+$commits_testbranch = @()
 do {
     $params = @{
-        Uri     = "https://services.csa.spawar.navy.mil/bitbucket/rest/api/1.0/projects/CH/repos/$Repo/commits/?since=dev&until=$TestBranch&limit=50&start=$start"
+        Uri     = "https://services.csa.spawar.navy.mil/bitbucket/rest/api/1.0/projects/CH/repos/$Repo/commits/?since=$TargetBranch&until=$TestBranch&limit=50&start=$start"
         Headers = $Headers    
     }
-    $commitpage = Invoke-WebRequest @params | ConvertFrom-Json
-    if (!$commitpage.isLastPage) {
-        $start = $commitPage.nextPageStart
-    }
-    $commitHashes += $commitpage.values.id
-} until ($commitpage.isLastPage)
-$testBranchPullRequests = @()
-$testBranchPullRequests +=
-$allPullRequestCommits | 
-Where-Object { $commitHashes.Contains($_) } |
-ForEach-Object {
-    $url = "https://services.csa.spawar.navy.mil/bitbucket/rest/api/1.0/projects/CH/repos/$Repo/commits/$($_)/pull-requests"
+    $res = try { Invoke-WebRequest @params | ConvertFrom-Json }
+    catch { $false }       
+    $start = $res.nextPageStart
+    $commits_testbranch += $res.values
+} until ($res.isLastPage -or !$res)
+if (!$res) { 
+    Write-Host "Unable to retrieve $TestBranch commits, verify password information and portal access" -ForegroundColor Magenta 
+    exit
+}
+#endregion TestBranchCommits
+#region TBPR
+#Compare commit hashes in test branch to the commit hash of the pullrequests to determine pull requests are in the TestBranch
+$pullRequests_testBranch = @()
+$pullRequestCommits = $pullRequests.fromRef.latestCommit | Where-Object { ($commits_testbranch.id).Contains($_) }
+$commit = "<commitHash>"
+Write-Host "Retrieving pull requests tested in $TestBranch from https://services.csa.spawar.navy.mil/bitbucket/rest/api/1.0/projects/CH/repos/$Repo/commits/$commit/pull-requests" -ForegroundColor DarkCyan
+ForEach ($commit in $pullRequestCommits) {
+    $url = "https://services.csa.spawar.navy.mil/bitbucket/rest/api/1.0/projects/CH/repos/$Repo/commits/$commit/pull-requests"
     $params = @{
         Uri     = $url
         Headers = $Headers
     }  
-    Invoke-WebRequest @params
+    try { $pullRequests_testBranch += (Invoke-WebRequest @params | ConvertFrom-Json).values }
+    catch {
+        Write-Host "Unable to retrieve the pull requests tested in $TestBranch, verify password information and portal access" -ForegroundColor Magenta
+        exit
+    }
 }
-$testBranchPullRequests | ForEach-Object {
-    Write-Host "Writing PR $($_.title) information and updating description..."
-    $CreatedDate = (New-Object @1970TimeParams).AddMilliseconds($_.CreatedDate)
-    $UpdatedDate = (New-Object @1970TimeParams).AddMilliseconds($_.UpdatedDate)
-    $ReviewersApproved = $_.reviewers | Where-Object { $_.approved -match 'True' }
-    $ReviewersNeedsWork = $_.reviewers | Where-Object { $_.status -match 'NEEDS_WORK' }
-    $BitBucketPullRequests[$_.id.ToString()] = @{
-        'Title'              = $_.title
+$i = 0
+Write-Host "There are $($pullRequests_testBranch.Count) pull requests being tested in $TestBranch, processing pull requests..." -ForegroundColor DarkCyan
+foreach ($pullRequest in $pullRequests_testBranch) {
+    Add-Member -InputObject $pullRequest -MemberType NoteProperty -Name "JiraID" -Value (Get-JiraTicket($pullRequest))
+    $CreatedDate = (New-Object @1970TimeParams).AddMilliseconds($pullRequest.CreatedDate)
+    $UpdatedDate = (New-Object @1970TimeParams).AddMilliseconds($pullRequest.UpdatedDate)
+    $ReviewersApproved = $pullRequest.reviewers | Where-Object { $pullRequest.approved -match 'True' }
+    $ReviewersNeedsWork = $pullRequest.reviewers | Where-Object { $pullRequest.status -match 'NEEDS_WORK' }
+    $BitBucketPullRequests = @{
+        'Title'              = $pullRequest.title
         'CreatedDate'        = $CreatedDate.ToString($dateFormat)
         'UpdatedDate'        = $UpdatedDate.ToString($dateFormat)
-        'BranchName'         = $_.fromRef.displayID
-        'MergeTarget'        = $_.toRef.displayID
-        'Author'             = $_.author.user.displayName
+        'BranchName'         = $pullRequest.fromRef.displayID
+        'MergeTarget'        = $pullRequest.toRef.displayID
+        'Author'             = $pullRequest.author.user.displayName
         'ReviewersApproved'  = $ReviewersApproved.user.displayName -join ", "
         'ReviewersNeedsWork' = $ReviewersNeedsWork.user.displayName -join ", "
-        'Description'        = $_.description
+        'Description'        = $pullRequest.description
     }
-    if (Add-LinkToPullRequest($_).statusCode -eq 200) {
-        Write-Host "$($_.title) description successfully updated"
+    $BitBucketPullRequests
+    if ((FakeAdd-LinkToPullRequest($pullRequest)).statusCode -eq 200) {
+        Write-Host "$($pullRequest.title) description successfully updated"
     }
     else {
-        Write-Host "$($_.title) description failed to update"
+        Write-Host "$($pullRequest.title) description failed to update"
     }
+    $i++
+    Write-Progress -Activity "Writing PR $($pullRequest.title) information and updating description..." -PercentComplete ($i * 100 / $pullRequests_testBranch.Count)
 }
-    #endregion TestBranchCommits
+#endregion TestBranchCommits
