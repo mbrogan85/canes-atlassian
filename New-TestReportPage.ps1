@@ -54,7 +54,7 @@ function Get-OSAHeaders {
     }    
 }
 function Get-CurrentSprint {
-    $boardId = 998
+    $boardId = 998 #CANES Board
     $start = 0
     $sprints = @()
     do {
@@ -185,6 +185,7 @@ function Get-RecentReleaseTag {
             }
         }
     } until ($res.isLastPage)
+    return $null
 }
 function Get-Subsystem {
     param (
