@@ -184,8 +184,7 @@ function Get-RecentReleaseTag {
         foreach ($commitId in $commitIds) {
             if ($tags.latestCommit.Contains($commitId)) {
                 if ($tags[$($tags.latestCommit.indexOf($commitID))].displayID -match "[A-z]R[0-9]\Z") {
-                    $displayID = $tags[$($tags.latestCommit.indexOf($commitID))].displayID
-                    return $displayID.substring($displayID.LastIndexOf("_") + 1)
+                    return $tags[$($tags.latestCommit.indexOf($commitID))].displayID
                 }
             }
         }
@@ -215,8 +214,148 @@ function Get-Subsystem {
         }
     }
 }
+function Get-OSAHeaders {
+    #REST API Security protocols
+    [Net.ServicePointManager]::SecurityProtocol = "tls12, tls11, tls, Ssl3"
+    Add-Type -AssemblyName System.Security
+
+#Gather LDAP/SITC credentials
+$creds = Get-Credential -Message 'Enter LDAP/SITC Credentials'
+$pair = "$($creds.UserName):$($creds.GetNetworkCredential().password)"
+$encodedCreds = [System.Convert]::ToBase64String([System.Text.Encoding]::ASCII.GetBytes($pair))
+$basicAuthValue = "Basic $encodedCreds"
+return @{
+    Authorization = $basicAuthValue
+    }    
+}  
+function Get-Deltas {
+    <#
+        .SYNOPSIS
+            Parses the JSON object returned by the /bitbucket/rest/api/1.0/BitBucketRepo/diff API call
+
+        .PARAMETER Deltas
+           [PSCustomObject] The hashtable representation of the JSON return from the API
+
+        .EXAMPLE
+            $LocalDeltas = Get-Deltas -Deltas $Deltas
+
+        .OUTPUTS
+            [PSCustomObject]
+    #>   
+    param(
+        [Parameter(Mandatory)]
+        [PSCustomObject]
+        $Deltas
+    )
+    $output = @{
+        Added = [string[]]@()
+        Removed = [string[]]@()
+    }
+    $XmlHeader = "<LocalLocation>"
+    $Includes = ($Deltas.diffs.hunks.segments | 
+        Where-Object { $_.type -like "*ADDED*" -and $_.lines.line -like "*$XmlHeader*CANES_Media\ISO*" }).lines.line
+    $Excludes = ($Deltas.diffs.hunks.segments | 
+        Where-Object { $_.type -like "*REMOVED*" -and $_.lines.line -like "*$XmlHeader*CANES_Media\ISO*" }).lines.line
+    $output.Added = $Includes | Where-Object { $_ -like "*$XmlHeader*" } | ParseFilename
+    $output.Removed = $Excludes | Where-Object { $_ -like "*$XmlHeader*" } | ParseFilename
+    $output = Remove-DuplicateISOs $output
+    return $output
+}
+function ParseFilename {
+    <#
+        .SYNOPSIS
+            returns the Innertext of <LocalLocation /> and <CloudLocation /> nodes
+     
+        .PARAMETER str
+            the string value of the xml node
+
+        .EXAMPLE
+            $LocalDeltas.include += ParseFileName "                 <LocalLocation>CANES_Media\ISO\DSL\APP01.iso</LocalLocation>"
+                returns "CANES_Media\ISO\DSL\APP01.iso"
+
+        .OUTPUTS
+            [string]
+            the JSON object as a hashtable
+    #>
+    param(
+        [Parameter(ValueFromPipeline)]
+        [string]
+        $str
+    )
+    begin { $return = @() }
+    process {
+        $startPos = $str.IndexOf(">") + 1
+        $endPos = $str.LastIndexOf("<")
+        $return += $str.Substring($startPos, $endPos - $startPos)
+    }
+    end { return $return }
+}
+function Remove-DuplicateISOs {
+    param (
+        [PSCustomObject]$ht,
+        [string[]]$excludeArray
+    )
+    <#
+        .SYNOPSIS
+            Identifies and removes duplicate items in include and exclude files
+    #>
+    if ($ht.Added[0].contains("\")) {
+        #used for windows FileSystem Paths
+        $includeArray = $ht.Added -replace "\\", "\\" #removes escape character for comparison (errors without)
+        $excludeArray = $ht.Removed -replace "\\", "\\" #removes escape character for comparison (errors without)
+        $tmpArray = $includeArray #saves original include array T
+        $includeArray = $includeArray | Where-Object { $excludeArray -notcontains $_ } #removes common item in include and exclude
+        $excludeArray = $excludeArray | Where-Object { $tmpArray -notcontains $_ }
+        [string[]]$ht.Added = $includeArray -replace "\\\\", "\" #readjusts format before return
+        [string[]]$ht.Removed = $excludeArray -replace "\\\\", "\" #readjusts format before return
+    }
+    elseif ($ht.Added[0].contains("/")) {
+        #used for Linux FileSystem Paths (web)
+        $includeArray = $ht.include
+        $excludeArray = $ht.exclude
+        $tmpArray = $includeArray #saves original include array 
+        $includeArray = $includeArray | Where-Object { $excludeArray -notcontains $_ } #removes common item in include and exclude
+        $excludeArray = $excludeArray | Where-Object { $tmpArray -notcontains $_ }
+        [string[]]$ht.Added = $includeArray
+        [string[]]$ht.Removed = $excludeArray   
+    }
+    return $ht
+} 
+
+function Get-TrackedMediaDiff {
+    param(
+    [Parameter(Mandatory = $true)]
+    [string]
+    $ReleaseBranch,
+    [Parameter()]
+    [string]
+    $FilePath = "TrackedMedia.xml"
+)
+    if ($null -eq $Headers) { $Headers = Get-OSAHeaders }
+    $url = "https://services.csa.spawar.navy.mil/bitbucket/rest/api/1.0/projects/CH/repos/${Repo}/diff/${FilePath}?since=${ReleaseBranch}&until=${TestBranch}"
+    $params = @{
+        Uri     = $url
+        Headers = $Headers
+    }
+
+    try { $JsonDeltas = Invoke-WebRequest @params }
+    catch {
+        $e = $Error[0].Exception[0].Message
+        Write-Host "Error received: ${e} Exiting..." -ForegroundColor Red
+        return $null
+    }
+    $Deltas = $JsonDeltas | ConvertFrom-Json
+    $LocalDeltas = Get-Deltas -Deltas $Deltas
+        $includeTotal = $LocalDeltas.Added.Count
+        $excludeTotal = $LocalDeltas.Removed.Count
+        Write-Host "There were $includeTotal new files introduced in $TestBranch" -ForegroundColor Green
+        Write-Host "There were $excludeTotal files updated or removed in $TestBranch" -ForegroundColor Magenta   
+        return $LocalDeltas 
+}
 
 #endregion Functions
+
+. .\html-samples.ps1
 #region Variables
 if ($null -eq $Headers) { $Headers = Get-OSAHeaders }
 $1970TimeParams = @{
@@ -289,21 +428,12 @@ Write-Host "There are $($pullRequests_testBranch.Count) pull requests being test
 foreach ($pullRequest in $pullRequests_testBranch) {
     Add-Member -InputObject $pullRequest -MemberType NoteProperty -Name "JiraID" -Value (Get-JiraTicket($pullRequest)) 
 }
-$CreatedDate = (New-Object @1970TimeParams).AddMilliseconds($pullRequest.CreatedDate)
-$UpdatedDate = (New-Object @1970TimeParams).AddMilliseconds($pullRequest.UpdatedDate)
-$ReviewersApproved = $pullRequest.reviewers | Where-Object { $pullRequest.approved -match 'True' }
-$ReviewersNeedsWork = $pullRequest.reviewers | Where-Object { $pullRequest.status -match 'NEEDS_WORK' }
-$BitBucketPullRequests = @{
-    'Title'              = $pullRequest.title
-    'CreatedDate'        = $CreatedDate.ToString($dateFormat)
-    'UpdatedDate'        = $UpdatedDate.ToString($dateFormat)
-    'BranchName'         = $pullRequest.fromRef.displayID
-    'MergeTarget'        = $pullRequest.toRef.displayID
-    'Author'             = $pullRequest.author.user.displayName
-    'ReviewersApproved'  = $ReviewersApproved.user.displayName -join ", "
-    'ReviewersNeedsWork' = $ReviewersNeedsWork.user.displayName -join ", "
-    'Description'        = $pullRequest.description
-}
+$TrackedMedia = Get-TrackedMediaDiff -ReleaseBranch (Get-RecentReleaseTag)
+
+Get-ConfluencePageHtml -pullRequest $pullRequests_testBranch -jiraIds $pullRequests_testbranch.jiraID -MediaDiff $TrackedMedia
+
+
+
 $BitBucketPullRequests
 if ((FakeAdd-LinkToPullRequest($pullRequest)).statusCode -eq 200) {
     Write-Host "$($pullRequest.title) description successfully updated"

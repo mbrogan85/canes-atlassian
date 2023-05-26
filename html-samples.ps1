@@ -1,18 +1,18 @@
 function Get-ConfluencePageHtml {
     param (
-        $pullRequests_testBranch,
+        $pullRequests,
         $jiraIDs,
         $MediaDiff
     )
     $baseHtml = Get-Content .\html\template.html -Raw
     $updatedObjects = @{
-        PullRequestTable = New-PullRequestTable $pullRequests_testBranch
-        jiraTestBranch   = New-JiraTestBranchMacro $jiraIDs
+        PullRequestTable = New-PullRequestTable $pullRequests
+        jiraTestBranch   = New-JiraTestBranchMacro -JiraIDs $jiraIDs
         MediaDiffTable   = New-MediaDiff $MediaDiff
     }
     $outHtml = $baseHtml
     foreach ($key in $updatedObjects.Keys) {
-        $outHtml = $outHtml.replace("$(%$key%)", $updatedObjects[$key])
+        $outHtml = $outHtml.Replace("%$key%", $updatedObjects["$key"])
     }
     return $outHtml
 }
@@ -62,8 +62,9 @@ function New-PullRequestTable {
         $x1 = $x + 1
         $pr = @{ #consider function to Get-PullRequestAttribute -Attribute Validation | Platform etc
             PR         = $pullRequest.id
+            PRurl      = $pullRequest.links.self
             Validation = Get-PullRequestAttribute -pullRequest $pullRequest -Attribute Validation
-            Platform   = Get-PullRequestPlatform -pullRequest $pullRequest -Attribute Platform
+            Platform   = Get-PullRequestAttribute -pullRequest $pullRequest -Attribute Platform
             jiraID     = $pullRequest.JiraID
             i          = $i
             x          = $x
@@ -102,10 +103,7 @@ function New-MediaDiff {
         $MediaDiff
     )
     $tableHtml = Get-Content .\html\media-diff.html
-    $contentRows = Format-MediaDiff $MediaDiff
-    foreach ($row in $contentRows) {
-        $rowsHtml += New-MediaDiffRow $row
-    }
+    $rowsHtml = New-MediaDiffRow $MediaDiff
     $outHtml = $tableHtml[0..$($tableHtml.Count - 2)] + $rowsHtml + $tableHtml[-1]
     return $outHtml
 }
@@ -117,27 +115,13 @@ function New-MediaDiffRow {
     )
     $rowHtml = get-content .\html\media-diff-row.html -Raw
     $outHtml = $rowHtml
+    $content = @{}
     foreach ($key in $row.Keys) {
-        $outHtml = $outHtml.Replace("%$key%", $row["$key"])
+        $value = ($row["$key"] -join "<br />")
+        $content.Add($key,$value)
+    }
+    foreach ($key in $content.Keys) {
+        $outHtml = $outHtml.Replace("%$key%", $content["$key"])
     }
     return $outHtml
-}
-function Format-MediaDiff {
-    param(
-        [Parameter(Mandatory)]
-        [PSCustomObject]
-        $MediaDiff   
-    )
-    $output = @()
-    $Locations += Split-Path $MediaDiff.removed
-    $Locations += Split-Path $MediaDiff.added
-    $Locations = $Locations | Sort-Object -Unique
-    foreach ($Location in $Locations) {
-        $output += @{
-            Location = $Location
-            Removed  = $MediaDiff.removed | Where-Object { Split-Path $_ -like $Location }
-            Added    = $MediaDiff.added | Where-Object { Split-Path $_ -like $Location }
-        }
-    }
-    return $output
 }
