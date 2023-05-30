@@ -219,13 +219,13 @@ function Get-OSAHeaders {
     [Net.ServicePointManager]::SecurityProtocol = "tls12, tls11, tls, Ssl3"
     Add-Type -AssemblyName System.Security
 
-#Gather LDAP/SITC credentials
-$creds = Get-Credential -Message 'Enter LDAP/SITC Credentials'
-$pair = "$($creds.UserName):$($creds.GetNetworkCredential().password)"
-$encodedCreds = [System.Convert]::ToBase64String([System.Text.Encoding]::ASCII.GetBytes($pair))
-$basicAuthValue = "Basic $encodedCreds"
-return @{
-    Authorization = $basicAuthValue
+    #Gather LDAP/SITC credentials
+    $creds = Get-Credential -Message 'Enter LDAP/SITC Credentials'
+    $pair = "$($creds.UserName):$($creds.GetNetworkCredential().password)"
+    $encodedCreds = [System.Convert]::ToBase64String([System.Text.Encoding]::ASCII.GetBytes($pair))
+    $basicAuthValue = "Basic $encodedCreds"
+    return @{
+        Authorization = $basicAuthValue
     }    
 }  
 function Get-Deltas {
@@ -248,7 +248,7 @@ function Get-Deltas {
         $Deltas
     )
     $output = @{
-        Added = [string[]]@()
+        Added   = [string[]]@()
         Removed = [string[]]@()
     }
     $XmlHeader = "<LocalLocation>"
@@ -324,13 +324,13 @@ function Remove-DuplicateISOs {
 
 function Get-TrackedMediaDiff {
     param(
-    [Parameter(Mandatory = $true)]
-    [string]
-    $ReleaseBranch,
-    [Parameter()]
-    [string]
-    $FilePath = "TrackedMedia.xml"
-)
+        [Parameter(Mandatory = $true)]
+        [string]
+        $ReleaseBranch,
+        [Parameter()]
+        [string]
+        $FilePath = "TrackedMedia.xml"
+    )
     if ($null -eq $Headers) { $Headers = Get-OSAHeaders }
     $url = "https://services.csa.spawar.navy.mil/bitbucket/rest/api/1.0/projects/CH/repos/${Repo}/diff/${FilePath}?since=${ReleaseBranch}&until=${TestBranch}"
     $params = @{
@@ -346,11 +346,11 @@ function Get-TrackedMediaDiff {
     }
     $Deltas = $JsonDeltas | ConvertFrom-Json
     $LocalDeltas = Get-Deltas -Deltas $Deltas
-        $includeTotal = $LocalDeltas.Added.Count
-        $excludeTotal = $LocalDeltas.Removed.Count
-        Write-Host "There were $includeTotal new files introduced in $TestBranch" -ForegroundColor Green
-        Write-Host "There were $excludeTotal files updated or removed in $TestBranch" -ForegroundColor Magenta   
-        return $LocalDeltas 
+    $includeTotal = $LocalDeltas.Added.Count
+    $excludeTotal = $LocalDeltas.Removed.Count
+    Write-Host "There were $includeTotal new files introduced in $TestBranch" -ForegroundColor Green
+    Write-Host "There were $excludeTotal files updated or removed in $TestBranch" -ForegroundColor Magenta   
+    return $LocalDeltas 
 }
 
 #endregion Functions
@@ -429,10 +429,10 @@ foreach ($pullRequest in $pullRequests_testBranch) {
     Add-Member -InputObject $pullRequest -MemberType NoteProperty -Name "JiraID" -Value (Get-JiraTicket($pullRequest)) 
 }
 $TrackedMedia = Get-TrackedMediaDiff -ReleaseBranch (Get-RecentReleaseTag)
-
 Get-ConfluencePageHtml -pullRequest $pullRequests_testBranch -jiraIds $pullRequests_testbranch.jiraID -MediaDiff $TrackedMedia
-
-
+<# 
+    future development to create Confluence page from Html
+    future development to add links to Confluence page into PR description
 
 $BitBucketPullRequests
 if ((FakeAdd-LinkToPullRequest($pullRequest)).statusCode -eq 200) {
@@ -445,3 +445,4 @@ $i++
 Write-Progress -Activity "Writing PR $($pullRequest.title) information and updating description..." -PercentComplete ($i * 100 / $pullRequests_testBranch.Count)
 #}
 #endregion TestBranchCommits
+#>

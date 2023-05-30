@@ -1,32 +1,3 @@
-function Get-PeopleURLs {
-    <#
-        .SYNOPSIS
-            Converts machine friendly https://canes-media.s3-us-gov-west-1.amazonaws.com/path/to/bucket/and/file
-            using API tokens to URLs accessible by people authenticating through https://console.amazonaws-us-gov.com
-     
-        .PARAMETER MachineURL
-           [string[]] The array of URL(s) to be converted
-            Accepts Pipeline inputs
-
-        .EXAMPLE
-            $HumanURLsArray = $MachineURLsArray | Get-PeopleURLs
-
-        .OUTPUTS
-            [string]
-            the converted URL
-    #>   
-    param(
-        [Parameter(Mandatory, ValueFromPipeline)]
-        [string]
-        $MachineURL
-    )
-    process {
-        $MachinePortal = "https://canes-media.s3-us-gov-west-1.amazonaws.com/"
-        $PeoplePortal = "https://console.amazonaws-us-gov.com/s3/object/canes-media?region=us-gov-west-1&prefix="
-        $PeoplePrefix = $MachineURL.Replace("$MachinePortal", "")
-        return $PeoplePortal + $PeoplePrefix
-    }
-}
 function Get-Deltas {
     <#
         .SYNOPSIS
@@ -163,8 +134,6 @@ function Get-TrackedMediaDiff {
     if ($Headers -eq $null) { $Headers = Get-OSAHeaders }
     #endregion init
     #region initialize variables
-    $Local = ($Location -eq "Local")
-    $Cloud = ($Location -eq "Cloud")
     $url = "https://services.csa.spawar.navy.mil/bitbucket/rest/api/1.0/projects/CH/repos/${Repo}/diff/${FilePath}?since=${ReleaseBranch}&until=${TestBranch}"
     $params = @{
         Uri     = $url

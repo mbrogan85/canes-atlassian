@@ -9,12 +9,18 @@ function Get-ConfluencePageHtml {
         PullRequestTable = New-PullRequestTable $pullRequests
         jiraTestBranch   = New-JiraTestBranchMacro -JiraIDs $jiraIDs
         MediaDiffTable   = New-MediaDiff $MediaDiff
+        TOCID            = Get-UUID
+        ExpandID         = Get-UUID
+        BugsID           = Get-UUID
     }
     $outHtml = $baseHtml
     foreach ($key in $updatedObjects.Keys) {
         $outHtml = $outHtml.Replace("%$key%", $updatedObjects["$key"])
     }
     return $outHtml
+}
+function Get-UUID {
+    return [System.Guid]::NewGuid().Guid
 }
 function New-JiraTestBranchMacro {
     param(
@@ -23,7 +29,10 @@ function New-JiraTestBranchMacro {
         $JiraIDs
     )
     $macroHtml = Get-Content .\html\jira-testbranch.html -Raw
-    return $macroHtml.Replace("%jira-testbranchArray%", $JiraIDs -join ",")
+    $UUID = Get-UUID
+    $macroHtml = $macroHtml.Replace("%jira-testbranchArray%", $JiraIDs -join ",")
+    $macroHtml = $macroHtml.Replace("%UUID%", $UUID)
+    return $macroHtml
 }
     
 function Get-PullRequestAttribute {
@@ -62,10 +71,11 @@ function New-PullRequestTable {
         $x1 = $x + 1
         $pr = @{ #consider function to Get-PullRequestAttribute -Attribute Validation | Platform etc
             PR         = $pullRequest.id
-            PRurl      = $pullRequest.links.self
+            PRurl      = $pullRequest.links.self.href
             Validation = Get-PullRequestAttribute -pullRequest $pullRequest -Attribute Validation
             Platform   = Get-PullRequestAttribute -pullRequest $pullRequest -Attribute Platform
             jiraID     = $pullRequest.JiraID
+            UUID       = Get-UUID
             i          = $i
             x          = $x
             x1         = $x1
@@ -118,7 +128,7 @@ function New-MediaDiffRow {
     $content = @{}
     foreach ($key in $row.Keys) {
         $value = ($row["$key"] -join "<br />")
-        $content.Add($key,$value)
+        $content.Add($key, $value)
     }
     foreach ($key in $content.Keys) {
         $outHtml = $outHtml.Replace("%$key%", $content["$key"])
