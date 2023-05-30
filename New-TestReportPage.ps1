@@ -38,7 +38,7 @@ param(
     [Parameter(Mandatory)]
     [string]
     $TestBranch,
-    [Parameter]
+    [Parameter()]
     [string]
     $TargetBranch = "dev"
 )
