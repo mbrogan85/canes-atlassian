@@ -1,47 +1,51 @@
-<td class="numberingColumn" contenteditable="false" data-mce-resize="false">%i%</td>
-<td>
-    <div class="content-wrapper">
-        <p>
-            <ac:structured-macro ac:macro-id="%UUID%" ac:name="jira" ac:schema-version="1">
-              <ac:parameter ac:name="server">CSA Jira</ac:parameter>
-              <ac:parameter ac:name="columnIds">issuekey,issuetype,priority,components,assignee,summary,customfield_16103</ac:parameter>
-              <ac:parameter ac:name="columns">key,type,priority,components,assignee,summary,Exit Criteria</ac:parameter>
-              <ac:parameter ac:name="serverId">ffd926ff-b6b3-3a76-b0f1-634eecd94a8d</ac:parameter>
-              <ac:parameter ac:name="key">%jiraID%</ac:parameter>
-            </ac:structured-macro>
-        </p>
-    </div>
-</td>
-<td>
-    <a href="%PRurl%">%PR%</a>
-</td>
-<td>
-    <p>%Validation%</p>
-</td>
-<td>
-    <p>%Platform%</p>
-</td>
-<td>
-   <br />
-</td>
-<td>
-    <br />
-</td>
-<td>
-</td>
-<td>
-    <div class="content-wrapper">
-        <ac:task-list>
-            <ac:task>
-                <ac:task-id>%x%</ac:task-id>
-                <ac:task-status>incomplete</ac:task-status>
-                <ac:task-body>Merge</ac:task-body>
-            </ac:task>
-            <ac:task>
-                <ac:task-id>%x1%</ac:task-id>
-                <ac:task-status>incomplete</ac:task-status>
-                <ac:task-body>Defer</ac:task-body>
-            </ac:task>
-        </ac:task-list>
-    </div>
-</td>
+<tr>
+    <td class="numberingColumn" contenteditable="false" data-mce-resize="false">%i%</td>
+    <td>
+        <div class="content-wrapper">
+            <p>
+                <ac:structured-macro ac:macro-id="%UUID%" ac:name="jira" ac:schema-version="1">
+                    <ac:parameter ac:name="server">CSA Jira</ac:parameter>
+                    <ac:parameter ac:name="columnIds">issuetype,priority,components,assignee,summary,customfield_16103
+                    </ac:parameter>
+                    <ac:parameter ac:name="columns">type,priority,components,assignee,summary,Exit Criteria
+                    </ac:parameter>
+                    <ac:parameter ac:name="serverId">ffd926ff-b6b3-3a76-b0f1-634eecd94a8d</ac:parameter>
+                    <ac:parameter ac:name="key">%jiraID%</ac:parameter>
+                </ac:structured-macro>
+            </p>
+        </div>
+    </td>
+    <td>
+        <a href="%PRurl%">%PR%</a>
+    </td>
+    <td>
+        <p>%Validation%</p>
+    </td>
+    <td>
+        <p>%Platform%</p>
+    </td>
+    <td>
+        <br />
+    </td>
+    <td>
+        <br />
+    </td>
+    <td>
+    </td>
+    <td>
+        <div class="content-wrapper">
+            <ac:task-list>
+                <ac:task>
+                    <ac:task-id>%x%</ac:task-id>
+                    <ac:task-status>incomplete</ac:task-status>
+                    <ac:task-body>Merge</ac:task-body>
+                </ac:task>
+                <ac:task>
+                    <ac:task-id>%x1%</ac:task-id>
+                    <ac:task-status>incomplete</ac:task-status>
+                    <ac:task-body>Defer</ac:task-body>
+                </ac:task>
+            </ac:task-list>
+        </div>
+    </td>
+</tr>

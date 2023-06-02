@@ -69,39 +69,45 @@ function Get-CurrentSprint {
     } until ($res.isLast -or !$res)
     return ($sprints | Where-Object { $_.state -eq "active" -and $_.name -like "AIR*" })[0].name
 }
-function FakeAdd-LinkToPullRequest {
-    param(
-        [Parameter(ValueFromPipeline)]
-        [PSCustomObject]
-        $PullRequest
-    )
-    process {
-        if ($null -eq $Headers) { $Headers = Get-OSAHeaders }
-        $TestBranchHeader = "## Test Branches:`n`n"
-        $confluenceMarkDown = "[$TestBranch]($conflueneUrl)"
-        $description = $PullRequest.description
-        if ($description -notmatch $TestBranchHeader) {
-            $newDescription = "$description`n`n$TestBranchHeader`n`n$confluenceMarkdown`n`n_____"
-        }
-        else {
-            $offset = $TestBranchHeader.ToCharArray().Count
-            $splicePoint = $description.IndexOf($TestBranchHeader) + $offset
-            $newDescBegin = $description.substring(0, $splicePoint)
-            $newDescEnd = $description.substring($splicePoint)
-            $newDescription = "$newDescBegin$confluenceMarkdown`n$newDescEnd"
-        }
-        $PullRequest.version++
-        $PullRequest.description = $newDescription
-        $body = @($PullRequest.version, $PullRequest.description) | ConvertTo-Json -Compress
-        Write-Host $body | ConvertFrom-Json
-        return @{StatusCode = 200 }
-    }
-}
+#function FakeAdd-LinkToPullRequest {
+#    param(
+#        [Parameter(ValueFromPipeline)]
+#        [PSCustomObject]
+#        $PullRequest
+#    )
+#    process {
+#        if ($null -eq $Headers) { $Headers = Get-OSAHeaders }
+#        $TestBranchHeader = "## Test Branches:`n`n"
+#        $confluenceMarkDown = "[$TestBranch]($conflueneUrl)"
+#        $description = $PullRequest.description
+#        if ($description -notmatch $TestBranchHeader) {
+#            $newDescription = "$description`n`n$TestBranchHeader`n`n$confluenceMarkdown`n`n_____"
+#        }
+#        else {
+#            $offset = $TestBranchHeader.ToCharArray().Count
+#            $splicePoint = $description.IndexOf($TestBranchHeader) + $offset
+#            $newDescBegin = $description.substring(0, $splicePoint)
+#            $newDescEnd = $description.substring($splicePoint)
+#            $newDescription = "$newDescBegin$confluenceMarkdown`n$newDescEnd"
+#        }
+#        $PullRequest.version++
+#        $PullRequest.description = $newDescription
+#        $body = @($PullRequest.version, $PullRequest.description) | ConvertTo-Json -Compress
+#        Write-Host $body | ConvertFrom-Json
+#        return @{StatusCode = 200 }
+#    }
+#}
 function Add-LinkToPullRequest {
     param(
         [Parameter()]
         [PSCustomObject]
-        $PullRequest
+        $PullRequest,
+        [Parameter()]
+        [string]
+        $confluencUrl,
+        [Parameter()]
+        [string]
+        $TestBranch
     )
     process {
         if ($null -eq $Headers) { $Headers = Get-OSAHeaders }
@@ -120,7 +126,6 @@ function Add-LinkToPullRequest {
         }
         $PullRequest.version++
         $PullRequest.description = $newDescription
-        $body = @($PullRequest.version, $PullRequest.description) | ConvertTo-Json -Compress
         $body = @($PullRequest.version, $PullRequest.description) | ConvertTo-Json -Compress
         $url = "https://services.csa.spawar.navy.mil/bitbucket/rest/api/1.0/projects/CH/repos/$Repo/pull-request/$($PullRequest.id)"
         $params = @{
@@ -136,7 +141,8 @@ function Add-LinkToPullRequest {
 function New-ConfluenceTestPage {
     param(
         $Repo,
-        $TestBranch
+        $TestBranch,
+        $params
     )
     switch ($Repo) {
         "canes-ob2-2" { $version = "SW5"; break }
@@ -144,7 +150,34 @@ function New-ConfluenceTestPage {
         Default { $version = "FixMe" }
     }
     $confluenceTitle = "$version $(Get-CurrentSprint) $TestBranch"
-    $confluenceTitle
+    $parentID = 519735762
+    $html = Get-ConfluencePageHtml @params
+    [PSCustomObject]$request = @{
+        type      = "page"
+        title     = "$ConfluenceTitle"
+        ancestors = @(
+            [PSCustomObject]@{
+                id = $parentID 
+            })
+        space     = @{
+            key = "CANES" 
+        }
+        body      = @{
+            storage = [PSCustomObject]@{
+                value          = $html
+                representation = "storage"
+            }
+        }
+    }
+    $url = "https://services.csa.spawar.navy.mil/confluence/rest/api/content/"
+    [PSCustomObject]$restMethod = @{
+        Uri         = $url
+        Method      = "POST"
+        ContentType = "application/json"
+        Headers     = $Headers
+        Body        = $request | ConvertTo-Json -Compress
+    }
+    return Invoke-RestMethod @restMethod
 }
 function Get-JiraTicket {
     param(
@@ -352,16 +385,16 @@ function Get-TrackedMediaDiff {
     Write-Host "There were $excludeTotal files updated or removed in $TestBranch" -ForegroundColor Magenta   
     return $LocalDeltas 
 }
+. .\html\htmlFunctions.ps1
 
 #endregion Functions
 
-. .\html-samples.ps1
 #region Variables
 if ($null -eq $Headers) { $Headers = Get-OSAHeaders }
-$1970TimeParams = @{
-    Type         = "DateTime"
-    ArgumentList = @(1970, 1, 1, 0, 0, 0, 0)
-}
+#$1970TimeParams = @{
+#    Type         = "DateTime"
+#    ArgumentList = @(1970, 1, 1, 0, 0, 0, 0)
+#}
 #REST API Security protocols
 [Net.ServicePointManager]::SecurityProtocol = "tls12, tls11, tls" #"Ssl3"
 Add-Type -AssemblyName System.Security
@@ -423,26 +456,19 @@ ForEach ($commit in $pullRequestCommits) {
         exit
     }
 }
-$i = 0
 Write-Host "There are $($pullRequests_testBranch.Count) pull requests being tested in $TestBranch, processing pull requests..." -ForegroundColor DarkCyan
 foreach ($pullRequest in $pullRequests_testBranch) {
     Add-Member -InputObject $pullRequest -MemberType NoteProperty -Name "JiraID" -Value (Get-JiraTicket($pullRequest)) 
 }
 $TrackedMedia = Get-TrackedMediaDiff -ReleaseBranch (Get-RecentReleaseTag)
-Get-ConfluencePageHtml -pullRequest $pullRequests_testBranch -jiraIds $pullRequests_testbranch.jiraID -MediaDiff $TrackedMedia
-<# 
-    future development to create Confluence page from Html
-    future development to add links to Confluence page into PR description
-
-$BitBucketPullRequests
-if ((FakeAdd-LinkToPullRequest($pullRequest)).statusCode -eq 200) {
-    Write-Host "$($pullRequest.title) description successfully updated"
+$params = @{
+    pullrequest = $pullRequests_testBranch
+    jiraIDs     = $pullRequests_testBranch.jiraID
+    MediaDiff   = $TrackedMedia
 }
-else {
-    Write-Host "$($pullRequest.title) description failed to update"
+$res = (New-ConfluenceTestPage -Repo $Repo -TestBranch $TestBranch -params $params)
+$confluencUrl = "$res._links.base + $res._links.webui"
+foreach ($pullRequest in $pullRequests_testBranch){
+    Add-LinkToPullRequest -PullRequest $pullRequest -confluenceUrl $confluencUrl -TestBranch $TestBranch
 }
-$i++
-Write-Progress -Activity "Writing PR $($pullRequest.title) information and updating description..." -PercentComplete ($i * 100 / $pullRequests_testBranch.Count)
-#}
-#endregion TestBranchCommits
-#>
+Write-Host "Great Success"
