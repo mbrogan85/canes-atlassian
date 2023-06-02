@@ -40,7 +40,10 @@ param(
     $TestBranch,
     [Parameter()]
     [string]
-    $TargetBranch = "dev"
+    $TargetBranch = "dev",
+    [Parameter()]
+    [switch]
+    $AddLinksToPullRequests
 )
 #region Functions
 function Get-OSAHeaders {
@@ -108,6 +111,7 @@ function Add-LinkToPullRequest {
         [Parameter()]
         [string]
         $TestBranch
+        
     )
     process {
         if ($null -eq $Headers) { $Headers = Get-OSAHeaders }
@@ -468,7 +472,9 @@ $params = @{
 }
 $res = (New-ConfluenceTestPage -Repo $Repo -TestBranch $TestBranch -params $params)
 $confluencUrl = "$res._links.base + $res._links.webui"
-foreach ($pullRequest in $pullRequests_testBranch){
-    Add-LinkToPullRequest -PullRequest $pullRequest -confluenceUrl $confluencUrl -TestBranch $TestBranch
+if ($AddLinksToPullRequests) {
+    foreach ($pullRequest in $pullRequests_testBranch) {
+        Add-LinkToPullRequest -PullRequest $pullRequest -confluenceUrl $confluencUrl -TestBranch $TestBranch
+    }
 }
-Write-Host "Great Success"
+Write-Host "Great Success.  Confluence page created: $confluenceUrl"
