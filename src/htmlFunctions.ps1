@@ -1,14 +1,39 @@
 function Get-ConfluencePageHtml {
+    <#
+        .SYNOPSIS
+        Get the modified html needed to pass to New-ConfluenceTestPage
+
+        .DESCRIPTION 
+        Uses the template.html and substitutes values obtained from pullrequests, jiraID's and the differences in tracked media
+
+        .PARAMETER pullRequests
+        Dictionary of the BitBucket api return object
+
+        .PARAMETER jiraIDs
+        String array of the jira issues with pull requests in the test branch
+
+        .PARAMETER MediaDiff
+        Dictionary object containing ISO files which were .added or .removed between release and test branch
+
+        .OUTPUTS
+        String - RAW html which is the confluence page content
+    #>
     param (
+        [Parameter()]
+        [PSCustomObject]
         $pullRequests,
+        [Parameter()]
+        [string[]]
         $jiraIDs,
+        [Parameter()]
+        [PSCustomObject]        
         $MediaDiff
     )
     $baseHtml = Get-Content .\html\template.html -Raw
     $updatedObjects = @{
         PullRequestTable = New-PullRequestTable $pullRequests
         jiraTestBranch   = New-JiraTestBranchMacro -JiraIDs $jiraIDs
-        MediaDiffTable   = New-MediaDiff $MediaDiff
+        MediaDiffTable   = New-MediaDiffTable $MediaDiff
         TOCID            = Get-UUID
         ExpandID         = Get-UUID
         BugsID           = Get-UUID
@@ -20,9 +45,23 @@ function Get-ConfluencePageHtml {
     return $outHtml
 }
 function Get-UUID {
+    <#
+        .SYNOPSIS
+        Returns a randomized GUID to ensure uniqueness when posting to confluence
+    #>
     return [System.Guid]::NewGuid().Guid
 }
 function New-JiraTestBranchMacro {
+    <#
+        .SYNOPSIS
+        creates a Confluence Jira Issue macro object from input JiraIDs
+
+        .PARAMETER JiraIDs
+        String array of jira tickets in the test branch
+
+        .OUTPUTS
+        String HTML of macro
+    #>
     param(
         [Parameter(ValueFromPipeline, Mandatory)]
         [string[]]
@@ -36,6 +75,16 @@ function New-JiraTestBranchMacro {
 }
     
 function Get-PullRequestAttribute {
+    <#
+        .SYNOPSIS
+        Parses the pull request 'description' for Validation and Platform specifications needed for testing
+
+        .PARAMETER pullRequest
+        Dictionary of the BitBucket api return object
+
+        .PARAMETER Attribute
+        Desired return value
+    #>
     param (
         $pullRequest,
         [Parameter()]
@@ -59,17 +108,30 @@ function Get-PullRequestAttribute {
 }
 
 function New-PullRequestTable {
+    <#
+        .SYNOPSIS
+        Builds the pull request table in html    
+
+        .DESCRIPTION
+        Breaks down pull request into table attributes.  Using value substitution, creates the table in html row by row and inserts <table>...</table> to the template
+
+        .PARAMETER pullRequests_testBranch
+        Dictionary of the BitBucket api return object.  Modified to include 'JiraID' as a key.
+
+        .OUTPUTS
+        string html of pull request table
+    #>
     param(
         [Parameter(Mandatory)]
         [PSCustomObject[]]
         $pullRequests_testBranch
     )
-    $i = 1
-    $x = 1
+    $i = 1 #used in row numbering
+    $x = 1 #used as ID of Merge checkbox
     $pullrequest_rows = @()
     foreach ($pullRequest in $pullRequests_testBranch) {
-        $x1 = $x + 1
-        $pr = @{ #consider function to Get-PullRequestAttribute -Attribute Validation | Platform etc
+        $y = $x + 1 #used as ID of Defer checkbox
+        $pr = @{ 
             PR         = $pullRequest.id
             PRurl      = $pullRequest.links.self.href
             Validation = Get-PullRequestAttribute -pullRequest $pullRequest -Attribute Validation
@@ -78,7 +140,7 @@ function New-PullRequestTable {
             UUID       = Get-UUID
             i          = $i
             x          = $x
-            x1         = $x1
+            y          = $y
         }
         $pullrequest_rows += "$(New-PullRequestRow $pr)`n"
         $x = $x + 2
@@ -89,6 +151,16 @@ function New-PullRequestTable {
     return $outHtml    
 }
 function New-PullRequestRow {
+    <#
+        .SYNOPSIS
+        Returns html of an individual table row. <tr>...</tr>
+
+        .PARAMETER PullRequest
+        The pull request dictionary object modified to include the JiraID key
+
+        .OUTPUTS
+        String html for a table row
+    #>
     param(
         [Parameter(ValueFromPipeline, Mandatory)]
         [PSCustomObject]
@@ -106,7 +178,17 @@ function New-PullRequestRow {
     }
 }
 
-function New-MediaDiff {
+function New-MediaDiffTable {
+    <#
+        .SYNOPSIS
+        Returns the html from <table>...</table> for the table accounting for the different isos between release and test branches
+
+        .PARAMETER MediaDiff
+        Dictionary object with added and removed isos (as string arrays)
+
+        .NOTES
+        Helper function of Get-ConfluencePageHtml
+    #>
     param (
         [Parameter(Mandatory)]
         [PSCustomObject]
@@ -118,6 +200,13 @@ function New-MediaDiff {
     return $outHtml
 }
 function New-MediaDiffRow {
+    <#
+        .SYNOPSIS
+        Returns the html from <tr>..</tr> to indicate which media files have been updated since most recent release
+        
+        .NOTES
+        Helper function of New-MediaDiffTable
+    #>
     param (
         [Parameter()]
         [PsCustomObject]
