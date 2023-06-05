@@ -21,6 +21,20 @@ function Get-CurrentSprint {
     } until ($res.isLast -or !$res)
     return ($sprints | Where-Object { $_.state -eq "active" -and $_.name -like "AIR*" })[0].name
 }
+function Get-ParentPageID {
+    param(
+        [Parameter()]
+        [string]
+        $Phase
+    )
+    $url = "https://services.csa.spawar.navy.mil/confluence/rest/api/content/?title=$Phase+Phase+Test+Reports"
+    $params = @{
+        Uri = $url
+        Headers = $Headers
+    }
+    $res = Invoke-WebRequest @params | ConvertFrom-Json
+    return [int]$res.results.id    
+}
 #function FakeAdd-LinkToPullRequest {
 #    param(
 #        [Parameter(ValueFromPipeline)]
@@ -143,10 +157,12 @@ function New-ConfluenceTestPage {
     switch ($Repo) {
         "canes-ob2-2" { $version = "SW5"; break }
         "canes-ob2" { $version = "SW4"; break }
-        Default { $version = "FixMe" }
+        Default { $version = "FixMe" } #used as default for non-standard repo
     }
-    $confluenceTitle = "$version - $(Get-CurrentSprint) - $TestBranch"
-    $parentID = 519735762 #ID for https://services.csa.spawar.navy.mil/confluence/display/CANES/Test+Reports
+    $Sprint = Get-CurrentSprint
+    $Phase = ($Sprint -split " ")[1]
+    $confluenceTitle = "$version - $Sprint - $TestBranch"
+    $parentID = Get-ParentPageID -Phase $Phase
     $html = Get-ConfluencePageHtml @params
     [PSCustomObject]$request = @{
         type      = "page"
