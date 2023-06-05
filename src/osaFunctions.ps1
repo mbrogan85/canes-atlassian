@@ -145,7 +145,7 @@ function New-ConfluenceTestPage {
         "canes-ob2" { $version = "SW4"; break }
         Default { $version = "FixMe" }
     }
-    $confluenceTitle = "$version $(Get-CurrentSprint) $TestBranch"
+    $confluenceTitle = "$version - $(Get-CurrentSprint) - $TestBranch"
     $parentID = 519735762 #ID for https://services.csa.spawar.navy.mil/confluence/display/CANES/Test+Reports
     $html = Get-ConfluencePageHtml @params
     [PSCustomObject]$request = @{
