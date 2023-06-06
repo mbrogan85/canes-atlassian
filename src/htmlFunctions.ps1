@@ -42,7 +42,7 @@ function Get-ConfluencePageHtml {
     foreach ($key in $updatedObjects.Keys) {
         $outHtml = $outHtml.Replace("%$key%", $updatedObjects["$key"])
     }
-    return $outHtml
+    return [Net.WebUtility]::HtmlEncode($outHtml)
 }
 function Get-UUID {
     <#
@@ -94,16 +94,19 @@ function Get-PullRequestAttribute {
     $description = $pullRequest.description
     switch ($Attribute) {
         "Validation" {
-            $searchStr = "**Validation Instructions:**"
+            $searchStr = "**Validation Instructions:"
             break
         }
         "Platform" {
-            $searchStr = "**Applicable Platforms/Enclaves:**"
+            $searchStr = "**Applicable Platforms/Enclaves:"
             break
         }
     }
     $start = $description.indexOf($searchStr) + $searchStr.Length
+    if ($start -lt 0) { return $null }
+    $start = $start + $description.substring($start).indexOf("**") + 2
     $length = ($description.substring($start)).indexOf("`n")
+    if ($length -lt 0) { return $null }
     return $description.substring($start, $length)
 }
 

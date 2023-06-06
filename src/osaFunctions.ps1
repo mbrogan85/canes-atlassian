@@ -21,13 +21,14 @@ function Get-CurrentSprint {
     } until ($res.isLast -or !$res)
     return ($sprints | Where-Object { $_.state -eq "active" -and $_.name -like "AIR*" })[0].name
 }
-function Get-ParentPageID {
+function Get-ConfluencePageID {
     param(
         [Parameter()]
         [string]
-        $Phase
+        $Title
     )
-    $url = "https://services.csa.spawar.navy.mil/confluence/rest/api/content/?title=$Phase+Phase+Test+Reports"
+    $Title = $Title.Replace(" ","+")
+    $url = "https://services.csa.spawar.navy.mil/confluence/rest/api/content/?title=$Title"
     $params = @{
         Uri = $url
         Headers = $Headers
@@ -160,23 +161,29 @@ function New-ConfluenceTestPage {
         Default { $version = "FixMe" } #used as default for non-standard repo
     }
     $Sprint = Get-CurrentSprint
+    $ReleaseSprint = Get-RecentReleaseTag
+    $ReleaseSprint = $ReleaseSpring.Substring($ReleaseSprint.LastIndexOf("_") + 1)
     $Phase = ($Sprint -split " ")[1]
-    $confluenceTitle = "$version - $Sprint - $TestBranch"
-    $parentID = Get-ParentPageID -Phase $Phase
+    $ParentPageTitle = "$Phase+Phase+Test+Reports"
+    $confluenceTitle = "$version - $ReleaseSprint - $TestBranch"
+    if (Get-ConfluencePageID -Title $confluenceTitle) { #adds timestamp if page already exists
+        $confluenceTitle = "$confluenceTitle-$(Get-Date -Format 'yyyyMMdd-HHmmss')"
+    }
+    $parentID = Get-ConfluencePageID -Title $ParentPageTitle
     $html = Get-ConfluencePageHtml @params
-    [PSCustomObject]$request = @{
+    $request = @{
         type      = "page"
         title     = "$ConfluenceTitle"
         ancestors = @(
-            [PSCustomObject]@{
-                id = $parentID 
+            @{
+                id = $parentID
             })
         space     = @{
             key = "CANES" 
         }
         body      = @{
             storage = [PSCustomObject]@{
-                value          = $html
+                value          = "$html.rep"
                 representation = "storage"
             }
         }
@@ -187,9 +194,9 @@ function New-ConfluenceTestPage {
         Method      = "POST"
         ContentType = "application/json"
         Headers     = $Headers
-        Body        = $request | ConvertTo-Json -Compress
+        Body        = ($request | ConvertTo-Json -Compress)
     }
-    return Invoke-RestMethod @restMethod | ConvertFrom-Json
+    return Invoke-RestMethod @restMethod
 }
 function Get-JiraTicket {
     <#

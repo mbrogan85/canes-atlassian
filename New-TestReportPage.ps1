@@ -49,7 +49,7 @@ param(
     $AddLinksToPullRequests
 )
 #region Functions
-. .\src\functions.ps1
+. .\src\osaFunctions.ps1
 . .\src\htmlFunctions.ps1
 #endregion Functions
 
@@ -129,7 +129,8 @@ foreach ($pullRequest in $pullRequests_testBranch) {
 }
 
 #region Create Confluence Page
-$TrackedMedia = Get-TrackedMediaDiff -ReleaseBranch (Get-RecentReleaseTag) -TestBranch $TestBranch
+$ReleaseTag
+$TrackedMedia = Get-TrackedMediaDiff -ReleaseBranch $ReleaseTag -TestBranch $TestBranch
 $params = @{
     pullrequest = $pullRequests_testBranch
     jiraIDs     = $pullRequests_testBranch.jiraID
@@ -139,7 +140,7 @@ $res = (New-ConfluenceTestPage -Repo $Repo -TestBranch $TestBranch -params $para
 #endregion Create Confluence Page
 
 #region Add links to PR's
-$confluencUrl = "$res._links.base + $res._links.webui"
+$confluenceUrl = "$($res._links.base)$($res._links.webui)"
 if ($AddLinksToPullRequests) {
     foreach ($pullRequest in $pullRequests_testBranch) {
         Add-LinkToPullRequest -PullRequest $pullRequest -confluenceUrl $confluencUrl -TestBranch $TestBranch
