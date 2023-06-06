@@ -27,7 +27,7 @@ function Get-ConfluencePageID {
         [string]
         $Title
     )
-    $Title = $Title.Replace(" ","+")
+    $Title = [Net.WebUtility]::UrlEncode($Title)
     $url = "https://services.csa.spawar.navy.mil/confluence/rest/api/content/?title=$Title"
     $params = @{
         Uri = $url
