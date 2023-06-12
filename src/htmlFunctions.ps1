@@ -136,7 +136,7 @@ function New-PullRequestTable {
     foreach ($pullRequest in $pullRequests_testBranch) {
         $y = $x + 1 #used as ID of Defer checkbox
         $pr = @{
-            Subsystem  = $pullRequest.JiraIssue.fields.components.name -join "<br>" 
+            Subsystem  = $pullRequest.JiraIssue.fields.components.name -join "<br/>" 
             PR         = $pullRequest.id
             PRurl      = $pullRequest.links.self.href
             Validation = [Net.WebUtility]::HtmlEncode((Get-PullRequestAttribute -pullRequest $pullRequest -Attribute Validation))

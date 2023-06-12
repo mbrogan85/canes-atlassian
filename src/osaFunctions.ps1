@@ -209,7 +209,7 @@ function New-ConfluenceTestPage {
         }
         body      = @{
             storage = [PSCustomObject]@{
-                value          = "$html.rep"
+                value          = $html
                 representation = "storage"
             }
         }
