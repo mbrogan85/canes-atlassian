@@ -125,11 +125,12 @@ Write-Host "There are $($pullRequests_testBranch.Count) pull requests being test
 
 #Add JiraIDs as PR member
 foreach ($pullRequest in $pullRequests_testBranch) {
-    Add-Member -InputObject $pullRequest -MemberType NoteProperty -Name "JiraID" -Value (Get-JiraTicket($pullRequest)) 
+    Add-Member -InputObject $pullRequest -MemberType NoteProperty -Name "JiraID" -Value (Get-JiraIssueID($pullRequest))
+    Add-Member -InputObject $pullRequest -MemberType NoteProperty -Name "JiraIssue" -Value  (Get-JiraIssue -issueId $pullRequest.JiraID)
 }
 
 #region Create Confluence Page
-$ReleaseTag
+$ReleaseTag = Get-RecentReleaseTag
 $TrackedMedia = Get-TrackedMediaDiff -ReleaseBranch $ReleaseTag -TestBranch $TestBranch
 $params = @{
     pullrequest = $pullRequests_testBranch

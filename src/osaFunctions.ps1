@@ -21,16 +21,41 @@ function Get-CurrentSprint {
     } until ($res.isLast -or !$res)
     return ($sprints | Where-Object { $_.state -eq "active" -and $_.name -like "AIR*" })[0].name
 }
+function Get-JiraIssue {
+    <#
+        .SYNOPSIS
+        Returns the Jira Issue Api Object
+
+        .OUTPUTS
+        PSCustomObject - JiraIssue
+    #>
+    param(
+        [Parameter()]
+        [string]
+        $issueId
+    )
+    $rtn = @{}
+    $url = "https://services.csa.spawar.navy.mil/jira/rest/agile/1.0/issue/$issueId"
+    $params = @{
+        Uri     = $url
+        Headers = $Headers
+    }
+    $rtn = try { Invoke-WebRequest @params | ConvertFrom-Json } 
+    catch { $null }
+    return $rtn
+} 
 function Get-ConfluencePageID {
     param(
         [Parameter()]
         [string]
         $Title
     )
-    $Title = [Net.WebUtility]::UrlEncode($Title)
+    if ([Net.WebUtility]::UrlDecode($Title) -eq $Title){
+        $Title = [Net.WebUtility]::UrlEncode($Title)
+    }
     $url = "https://services.csa.spawar.navy.mil/confluence/rest/api/content/?title=$Title"
     $params = @{
-        Uri = $url
+        Uri     = $url
         Headers = $Headers
     }
     $res = Invoke-WebRequest @params | ConvertFrom-Json
@@ -162,11 +187,12 @@ function New-ConfluenceTestPage {
     }
     $Sprint = Get-CurrentSprint
     $ReleaseSprint = Get-RecentReleaseTag
-    $ReleaseSprint = $ReleaseSpring.Substring($ReleaseSprint.LastIndexOf("_") + 1)
+    $ReleaseSprint = $ReleaseSprint.Substring($ReleaseSprint.LastIndexOf("_") + 1)
     $Phase = ($Sprint -split " ")[1]
     $ParentPageTitle = "$Phase+Phase+Test+Reports"
     $confluenceTitle = "$version - $ReleaseSprint - $TestBranch"
-    if (Get-ConfluencePageID -Title $confluenceTitle) { #adds timestamp if page already exists
+    if (Get-ConfluencePageID -Title $confluenceTitle) {
+        #adds timestamp if page already exists
         $confluenceTitle = "$confluenceTitle-$(Get-Date -Format 'yyyyMMdd-HHmmss')"
     }
     $parentID = Get-ConfluencePageID -Title $ParentPageTitle
@@ -198,7 +224,7 @@ function New-ConfluenceTestPage {
     }
     return Invoke-RestMethod @restMethod
 }
-function Get-JiraTicket {
+function Get-JiraIssueID {
     <#
         .SYNOPSIS
         Parses the title of the pull request to return the Jira ID

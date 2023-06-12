@@ -29,6 +29,7 @@ function Get-ConfluencePageHtml {
         [PSCustomObject]        
         $MediaDiff
     )
+    $pullRequests = ($pullRequests | Sort-Object { $_.JiraIssue.fields.components.name[0], $_.id }) #sorts pr's in alphabetical order by subsystem
     $baseHtml = Get-Content .\html\template.html -Raw
     $updatedObjects = @{
         PullRequestTable = New-PullRequestTable $pullRequests
@@ -42,7 +43,7 @@ function Get-ConfluencePageHtml {
     foreach ($key in $updatedObjects.Keys) {
         $outHtml = $outHtml.Replace("%$key%", $updatedObjects["$key"])
     }
-    return [Net.WebUtility]::HtmlEncode($outHtml)
+    return $outHtml
 }
 function Get-UUID {
     <#
@@ -134,11 +135,12 @@ function New-PullRequestTable {
     $pullrequest_rows = @()
     foreach ($pullRequest in $pullRequests_testBranch) {
         $y = $x + 1 #used as ID of Defer checkbox
-        $pr = @{ 
+        $pr = @{
+            Subsystem  = $pullRequest.JiraIssue.fields.components.name -join "<br>" 
             PR         = $pullRequest.id
             PRurl      = $pullRequest.links.self.href
-            Validation = Get-PullRequestAttribute -pullRequest $pullRequest -Attribute Validation
-            Platform   = Get-PullRequestAttribute -pullRequest $pullRequest -Attribute Platform
+            Validation = [Net.WebUtility]::HtmlEncode((Get-PullRequestAttribute -pullRequest $pullRequest -Attribute Validation))
+            Platform   = [Net.WebUtility]::HtmlEncode((Get-PullRequestAttribute -pullRequest $pullRequest -Attribute Platform))
             jiraID     = $pullRequest.JiraID
             UUID       = Get-UUID
             i          = $i
